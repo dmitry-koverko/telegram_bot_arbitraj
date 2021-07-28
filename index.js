@@ -1,6 +1,9 @@
 const { Telegraf } = require('telegraf')
 const {MenuTemplate, MenuMiddleware} = require('telegraf-inline-menu')
 const bot = new Telegraf('1720769276:AAHWkCEeeg6z5luxux3kNtMTWgcQq7GsqF4')
+var express = require('express')
+var port = process.env.PORT || 80;
+var app = express()
 
 const { Keyboard, Key } = require('telegram-keyboard')
 
@@ -55,3 +58,7 @@ bot.help((ctx) => ctx.reply('Send me a sticker'))
 bot.on('sticker', (ctx) => ctx.reply('👍'))
 bot.hears('hi', (ctx) => ctx.reply('Hey there'))
 bot.launch()
+
+app.listen(port, () => {
+	console.log(`http://localhost:${port}`)
+})

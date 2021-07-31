@@ -1,129 +1,266 @@
 const { Telegraf } = require('telegraf')
 const {MenuTemplate, MenuMiddleware} = require('telegraf-inline-menu')
 const db = require('./db')
-//const bot = new Telegraf('1720769276:AAHWkCEeeg6z5luxux3kNtMTWgcQq7GsqF4') //release
-const bot = new Telegraf('1915110771:AAEwzJreBi5HvMqzo2x_G2TczcEj24ZA2e0') // test
+const TOKEN = '1915110771:AAEwzJreBi5HvMqzo2x_G2TczcEj24ZA2e0'
+const CURRENCY = 4.75
+const TelegramBot = require('node-telegram-bot-api');
+const bot = new TelegramBot(TOKEN, {polling: true});
 var express = require('express')
-var port = process.env.PORT || 80;
+var port = process.env.PORT || 5000;
 var app = express()
-
 const { Keyboard, Key } = require('telegram-keyboard')
 
-bot.command('start', function(ctx) {
-    bot.telegram.sendMessage(ctx.chat.id,
-      ctx.from.username + ', Добро пожаловать в бот, вот что он умеет: \n'+
-      '/menu - меню приложения', {
-    })
+// bot.setMyCommands([
+//   {
+//     command: '/start',
+//     description: 'Главное меню'
+//   },
+// ]);
 
-    // (async () => {
-    //   var uid = ctx.from.username
-    //   var a = await db.createUser(ctx.from.id, ctx.from.username)
-    // })
-})
-
-bot.on('callback_query', query => {
-    console.log(query);
-
-    switch (query.data) {
-      case 'balance':
-          console.log("balance");
-          break;
-
-        }
+bot.onText(/\/start/, async (msg) => {
+    await generalMenu(msg)
 });
 
-bot.command('balance', function(ctx) {
-    bot.telegram.sendMessage(ctx.chat.id,
-      'balance', {
-    })
+async function generalMenu(msg){
+  try {
+    const chatId = msg.chat.id;
+    var checkUser = await db.getUserById(msg.from.id)
+    if(checkUser == null) {
+      console.log('user no register');
+      if(!await db.createUser(msg.from.id, msg.from.username)) console.log('succeess user created');
+      else console.log('error user created');
+    }
+    else {
+      //console.log('user ' + msg.from.id + ' in system');
+    }
+    await bot.sendMessage(chatId, '---------Меню---------',
+      general_menu,
+    )
+    await bot.deleteMessage(chatId, msg.message_id);
 
-    // (async () => {
-    //   var uid = ctx.from.username
-    //   var a = await db.createUser(ctx.from.id, ctx.from.username)
-    // })
+  } catch (e) {
+    console.log('error general');
+  }
+}
+
+async function profileMenu(chatId, msg){
+  await bot.sendMessage(chatId, '---------Профиль---------',
+      profile_menu,
+  )
+  await bot.deleteMessage(chatId, msg.message_id);
+}
+
+async function appsMenu(chatId, msg){
+
+  var appsList = await db.getAllAppsCategory()
+
+  await bot.sendMessage(chatId, '---------Прилы---------',
+    getAppsMenu(appsList),
+  )
+  await bot.deleteMessage(chatId, msg.message_id);
+}
+
+async function faqMenu(chatId, msg){
+  await bot.sendMessage(chatId,
+    '---------FAQ--------- \n' +
+    'dsadasdasdasdasdasdadas',
+    faq_menu,
+  )
+  await bot.deleteMessage(chatId, msg.message_id);
+}
+
+async function balanceMenu(chatId, msg){
+  var balance = await db.getUserBalanceById(msg.from.id)
+  var count = balance / CURRENCY
+  //if(count.contains('.')) count = count.split('.')[0]
+  await bot.sendMessage(chatId,
+    '---------Баланс--------- \n'+
+    'Ваш баланс: ' + balance + ' RUB\n'+
+    'Количество инсталлов: ' + parseInt(count),
+    balance_menu,
+  )
+  await bot.deleteMessage(chatId, msg.message_id);
+}
+
+
+bot.on('callback_query', async (query) => {
+  //console.log(query);
+  const chatId = query.message.chat.id;
+  switch (query.data) {
+    case 'profile':
+      profileMenu(chatId, query.message)
+      break;
+    case 'apps':
+      appsMenu(chatId, query.message)
+      break;
+    case 'faq':
+      faqMenu(chatId, query.message)
+      break;
+    case 'back_to_general':
+      generalMenu(query.message)
+      break;
+    case 'balance':
+      balanceMenu(chatId, query.message)
+      break;
+    case 'back_to_profile':
+      profileMenu(chatId, query.message)
+      break;
+    case 'app_gambling':
+      await listCategoryMenu(chatId, query.message,2)
+      break;
+    default://
+
+  }
 })
 
-// bot.on('text', (ctx) => {
-//   ctx.telegram.sendMessage(ctx.message.chat.id, `Hello ${ctx.state.role}`)
-// })
+async function listCategoryMenu(chatId, msg, type){
+  var title = ''
+  switch (type) {
+    case 1:
+      title = '-----Dating-----'
+      break;
+    case 2:
+      title = '-----Gembling-----'
+      break;
+    case 3:
+      title = '-----Betting-----'
+      break;
+    case 4:
+      title = '-----Crypto-----'
+      break;
+    case 5:
+      title = '-----Sweepstakes-----'
+      break;
+    default:
 
-// bot.on('callback_query', (ctx) => {
-//   // Explicit usage
-//   ctx.telegram.answerCbQuery(ctx.callbackQuery.id)
-//
-//   // Using context shortcut
-//   ctx.answerCbQuery()
-// })
+  }
+  await bot.sendMessage(chatId, title,
+    await getListAppByCategory(type)
+  )
+  await bot.deleteMessage(chatId, msg.message_id);
+}
 
-bot.on("callback_query", function onCallbackQuery(callbackQuery) {
-    // 'callbackQuery' is of type CallbackQuery
-    console.log("query: ",callbackQuery);
-});
+async function getListAppByCategory(type){
+  var listApp = await db.getListAppByCategory(type)
+  var keyboardList = listApp.map((listItem) => ([{
+        text: `${listItem.number} ${listItem.name}`,
+        callback_data: 'appid' + listItem.number
+      }]));
+  keyboardList.push(
+    [{
+            text: "Назад",
+            callback_data: 'apps'
+    }]
+  )
+  return {
+        reply_markup: {
+        text: '',
+        inline_keyboard: keyboardList }}
 
-// bot.on('inline_query', (ctx) => {
-//   const result = []
-//   console.log("query: ",callbackQuery);
-//   // Explicit usage
-//   ctx.telegram.answerInlineQuery(ctx.inlineQuery.id, result)
-//
-//   // Using context shortcut
-//   ctx.answerInlineQuery(result)
-// })
+}
 
-// bot.on('callback_query', function onCallbackQuery(callbackQuery) {
-//   const action = callbackQuery.data;
-//   const msg = callbackQuery.message;
-//   const opts = {
-//     chat_id: msg.chat.id,
-//     message_id: msg.message_id,
-//   };
-//   let text;
-//
-//   if (action === 'balance') {
-//     text = 'You hit button 1';
-//   }
-//
-//   bot.editMessageText(text, opts);
-// });
+function getAppsMenu(list) {
+  return { reply_markup: {
+    text: '',
+    inline_keyboard: [
+                          [{
+                                  text: "Дейтинг (" + list.dating_count +")",
+                                  callback_data: 'app_dating'
+                          }],
+                          [{
+                                  text: "Гемблинг (" + list.gembling_count +")",
+                                  callback_data: 'app_gambling'
+                          }],
+                          [{
+                                  text: "Беттинг (" + list.betting_count +")",
+                                  callback_data: 'app_betting'
+                          }],
+                          [{
+                                  text: "Крипта (" + list.crypto_count +")",
+                                  callback_data: 'app_cryto'
+                          }],
+                          [{
+                                  text: "Розыгрыши (" + list.sweepstakes_count +")",
+                                  callback_data: 'my_sweepstaics'
+                          }],
+                          [{
+                                  text: "Назад",
+                                  callback_data: 'back_to_general'
+                          }]
 
-bot.command('menu', ctx => {
-    console.log(ctx.from)
-    bot.telegram.sendMessage(ctx.chat.id, 'Меню', {
+                      ]
+  }}
+}
 
-      reply_markup: {
-                  resize_keyboard : true,
-                  inline_keyboard: [
+var general_menu = { reply_markup: {
+  text: '',
+  inline_keyboard: [
+                        [{
+                                text: "🙎‍♂️ Профиль",
+                                callback_data: 'profile'
+                        }],
+                        [{
+                                text: "🎮 Прилы",
+                                callback_data: 'apps'
+                        }],
+                        [{
+                                text: "📋 FAQ",
+                                callback_data: 'faq'
+                        }]
 
-                      [{
-                              text: "💸 Прилы",
-                              callback_data: 'balance'
-                          },
-                          {
-                              text: "📈 Цены",
-                              callback_data: 'stat'
-                          }
-                      ],
-                      [{
-                              text: "💸 Баланс",
-                              callback_data: 'balance2'
-                          },
-                          {
-                              text: "📈 Статистика",
-                              callback_data: 'sta1t'
-                          },
-                          {
-                              text: "📋 FAQ",
-                              callback_data: 'faq'
-                          }
-                      ],
+                    ]
+}}
 
-                  ]
-              }
+var profile_menu = { reply_markup: {
+  text : '',
+  inline_keyboard: [
+                        [{
+                                text: "💵 Баланс",
+                                callback_data: 'balance'
+                        }],
+                        [{
+                                text: "🎮 Мои прилы",
+                                callback_data: 'my_apps'
+                        }],
+                        [{
+                                text: "	📈 Статистика",
+                                callback_data: 'statistic'
+                        }],
+                        [{
+                                text: "Назад",
+                                callback_data: 'back_to_general'
+                        }]
 
-    })
-})
+                    ]
+}}
 
-bot.launch()
+var faq_menu = { reply_markup: {
+  text: '',
+  inline_keyboard: [
+                        [{
+                                text: "Назад",
+                                callback_data: 'back_to_general'
+                        }]
+
+                    ]
+}}
+
+var balance_menu = { reply_markup: {
+  text: '',
+  inline_keyboard: [
+                        [{
+                                text: "Пополнить",
+                                callback_data: 'add_balance'
+                        }],
+                        [{
+                                text: "Назад",
+                                callback_data: 'back_to_profile'
+                        }]
+
+                    ]
+}}
+
+
 
 app.listen(port, () => {
 	console.log(`http://localhost:${port}`)
